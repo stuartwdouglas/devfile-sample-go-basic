@@ -8,7 +8,7 @@ spec:
     - name: show-sbom
       params:
         - name: IMAGE_URL
-          value: $(tasks.build-container.results.IMAGE_URL)-amd64
+          value: $(tasks.build-container-local.results.IMAGE_URL)$(tasks.build-container-remote.results.IMAGE_URL)
       taskRef:
         params:
           - name: name
@@ -27,7 +27,7 @@ spec:
         - name: image-url
           value: $(params.output-image)
         - name: build-task-status
-          value: $(tasks.build-container.status)
+          value: $(tasks.build-container-remote.status)$(tasks.build-container-local.status)
       taskRef:
         params:
           - name: name
@@ -84,13 +84,15 @@ spec:
       description: Image tag expiration time, time values could be something like
         1h, 2d, 3w for hours, days, and weeks, respectively.
       name: image-expires-after
+    - default: "amd64"
+      name: arch
   results:
     - description: ""
       name: IMAGE_URL
-      value: $(tasks.build-container.results.IMAGE_URL)
+      value: $(tasks.build-container-remote.results.IMAGE_URL)$(tasks.build-container-local.results.IMAGE_URL)
     - description: ""
       name: IMAGE_DIGEST
-      value: $(tasks.build-container.results.IMAGE_DIGEST)
+      value: $(tasks.build-container-remote.results.IMAGE_DIGEST)$(tasks.build-container-local.results.IMAGE_DIGEST)
     - description: ""
       name: CHAINS-GIT_URL
       value: $(tasks.clone-repository.results.url)
@@ -99,7 +101,7 @@ spec:
       value: $(tasks.clone-repository.results.commit)
     - description: ""
       name: JAVA_COMMUNITY_DEPENDENCIES
-      value: $(tasks.build-container-amd64.results.JAVA_COMMUNITY_DEPENDENCIES)
+      value: $(tasks.build-container-local.results.JAVA_COMMUNITY_DEPENDENCIES)$(tasks.build-container-remote.results.JAVA_COMMUNITY_DEPENDENCIES)
   tasks:
     - name: init
       params:
@@ -174,10 +176,10 @@ spec:
       workspaces:
         - name: source
           workspace: workspace
-    - name: build-container-amd64
+    - name: build-container-local
       params:
         - name: IMAGE
-          value: $(params.output-image)-amd64
+          value: $(params.output-image)-$(params.arch)
         - name: DOCKERFILE
           value: $(params.dockerfile)
         - name: CONTEXT
@@ -206,13 +208,17 @@ spec:
           operator: in
           values:
             - "true"
+        - input: $(params.arch)
+          operator: in
+          values:
+            - "amd64"
       workspaces:
         - name: source
           workspace: workspace
-    - name: build-container-arm64
+    - name: build-container-remote
       params:
         - name: IMAGE
-          value: $(params.output-image)-arm64
+          value: $(params.output-image)-$(params.arch)
         - name: DOCKERFILE
           value: $(params.dockerfile)
         - name: CONTEXT
@@ -228,7 +234,7 @@ spec:
         - name: ARCH
           value: arm64
       runAfter:
-        - build-container-amd64
+        - prefetch-dependencies
       taskRef:
         resolver: git
         params:
@@ -243,42 +249,22 @@ spec:
           operator: in
           values:
             - "true"
+        - input: $(params.arch)
+          operator: notin
+          values:
+            - "amd64"
       workspaces:
         - name: source
           workspace: workspace
-    - name: build-container
-      params:
-        - name: IMAGE
-          value: $(params.output-image)
-        - name: COMMIT_SHA
-          value: $(tasks.clone-repository.results.commit)
-        - name: ARCHS
-          value: amd64 arm64
-      runAfter:
-        - build-container-amd64
-        - build-container-arm64
-      taskRef:
-        resolver: git
-        params:
-          - name: url
-            value: https://github.com/stuartwdouglas/build-definitions.git
-          - name: revision
-            value: multiarch
-          - name: pathInRepo
-            value: task/buildah-multiarch/0.1/buildah-multiarch.yaml
-      when:
-        - input: $(tasks.init.results.build)
-          operator: in
-          values:
-            - "true"
     - name: inspect-image
       params:
         - name: IMAGE_URL
-          value: $(tasks.build-container.results.IMAGE_URL)
+          value: $(tasks.build-container-local.results.IMAGE_URL)$(tasks.build-container-remote.results.IMAGE_URL)
         - name: IMAGE_DIGEST
-          value: $(tasks.build-container.results.IMAGE_DIGEST)
+          value: $(tasks.build-container-local.results.IMAGE_DIGEST)$(tasks.build-container-remote.results.IMAGE_DIGEST)
       runAfter:
-        - build-container
+        - build-container-local
+        - build-container-remote
       taskRef:
         params:
           - name: name
@@ -299,7 +285,7 @@ spec:
     - name: deprecated-base-image-check
       params:
         - name: BASE_IMAGES_DIGESTS
-          value: $(tasks.build-container-amd64.results.BASE_IMAGES_DIGESTS)
+          value: $(tasks.build-container-local.results.BASE_IMAGES_DIGESTS)$(tasks.build-container-remote.results.BASE_IMAGES_DIGESTS)
       taskRef:
         params:
           - name: name
@@ -319,12 +305,13 @@ spec:
           workspace: workspace
     - name: clair-scan
       params:
-        - name: image-digest
-          value: $(tasks.build-container-amd64.results.IMAGE_DIGEST)
         - name: image-url
-          value: $(tasks.build-container-amd64.results.IMAGE_URL)
+          value: $(tasks.build-container-local.results.IMAGE_URL)$(tasks.build-container-remote.results.IMAGE_URL)
+        - name: image-digest
+          value: $(tasks.build-container-local.results.IMAGE_DIGEST)$(tasks.build-container-remote.results.IMAGE_DIGEST)
       runAfter:
-        - build-container
+        - build-container-local
+        - build-container-remote
       taskRef:
         params:
           - name: name
@@ -361,12 +348,13 @@ spec:
           workspace: workspace
     - name: clamav-scan
       params:
-        - name: image-digest
-          value: $(tasks.build-container-amd64.results.IMAGE_DIGEST)
         - name: image-url
-          value: $(tasks.build-container-amd64.results.IMAGE_URL)
+          value: $(tasks.build-container-local.results.IMAGE_URL)$(tasks.build-container-remote.results.IMAGE_URL)
+        - name: image-digest
+          value: $(tasks.build-container-local.results.IMAGE_DIGEST)$(tasks.build-container-remote.results.IMAGE_DIGEST)
       runAfter:
-        - build-container-amd64
+        - build-container-local
+        - build-container-remote
       taskRef:
         params:
           - name: name
@@ -384,11 +372,12 @@ spec:
     - name: sbom-json-check
       params:
         - name: IMAGE_URL
-          value: $(tasks.build-container-amd64.results.IMAGE_URL)
+          value: $(tasks.build-container-local.results.IMAGE_URL)$(tasks.build-container-remote.results.IMAGE_URL)
         - name: IMAGE_DIGEST
-          value: $(tasks.build-container-amd64.results.IMAGE_DIGEST)
+          value: $(tasks.build-container-local.results.IMAGE_DIGEST)$(tasks.build-container-remote.results.IMAGE_DIGEST)
       runAfter:
-        - build-container
+        - build-container-local
+        - build-container-remote
       taskRef:
         params:
           - name: name
