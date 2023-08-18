@@ -10,7 +10,7 @@ metadata:
     pipelinesascode.tekton.dev/on-event: '[pull_request]'
     pipelinesascode.tekton.dev/on-target-branch: '[main]'
     pipelinesascode.tekton.dev/pipeline: "[.tekton/image-pipeline.yaml]"
-  creationTimestamp: null
+    build.appstudio.redhat.com/produces: amd64
   labels:
     appstudio.openshift.io/application: devfile-sample-go-basic
     appstudio.openshift.io/component: devfile-sample-go-basic
